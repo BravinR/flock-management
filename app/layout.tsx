@@ -9,9 +9,8 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] })
 const _inter = Inter({ subsets: ["latin"], weight: ["400", "600", "700", "800"] })
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "farm",
+  description: "Poultry Management System",
   icons: {
     icon: [
       {
@@ -27,7 +26,7 @@ export const metadata: Metadata = {
         type: "image/svg+xml",
       },
     ],
-    apple: "/apple-icon.png",
+    apple: "/apple-touch-icon.png",
   },
 }
 
