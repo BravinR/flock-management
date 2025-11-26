@@ -183,7 +183,6 @@ const VaccineTrackingPage: React.FC = () => {
 
     // In production, this would be an API call
     const administration: VaccineAdministration = {
-      schedule_id: scheduleId,
       ...formData
     };
 
