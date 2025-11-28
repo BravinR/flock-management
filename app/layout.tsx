@@ -44,7 +44,7 @@ export default function RootLayout({
           <Sidebar />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto lg:ml-64">
+          <main className="flex-1 overflow-y-auto lg:ml-64 pt-16 lg:pt-0">
             {children}
           </main>
         </div>
