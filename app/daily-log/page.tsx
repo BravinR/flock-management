@@ -25,12 +25,12 @@ type FeedInputMode = 'bags' | 'kg';
 
 interface DailyLogData {
   log_date: string;
-  mortality_count: number;
+  mortality_count: number | string;
   feed_type: FeedType;
   feed_input_mode: FeedInputMode;
-  feed_bags: number;
-  feed_kg: number;
-  water_intake_liters: number;
+  feed_bags: number | string;
+  feed_kg: number | string;
+  water_intake_liters: number | string;
   notes: string;
   logged_by: string;
 }
@@ -50,12 +50,12 @@ const DailyOperationsLog: React.FC = () => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<DailyLogData>({
     log_date: new Date().toISOString().split('T')[0],
-    mortality_count: 0,
+    mortality_count: '',
     feed_type: 'Starters Mash',
     feed_input_mode: 'bags',
-    feed_bags: 0,
-    feed_kg: 0,
-    water_intake_liters: 0,
+    feed_bags: '',
+    feed_kg: '',
+    water_intake_liters: '',
     notes: '',
     logged_by: 'Farm Manager'
   });
@@ -70,15 +70,21 @@ const DailyOperationsLog: React.FC = () => {
 
   const handleMortalityChange = (delta: number) => {
     setFormData(prev => {
-      const newCount = Math.max(0, Math.min(currentFlockCount, prev.mortality_count + delta));
+      const currentCount = Number(prev.mortality_count) || 0;
+      const newCount = Math.max(0, Math.min(currentFlockCount, currentCount + delta));
       return { ...prev, mortality_count: newCount };
     });
   };
 
   const handleMortalityInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    const clampedValue = Math.max(0, Math.min(currentFlockCount, value));
-    setFormData(prev => ({ ...prev, mortality_count: clampedValue }));
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({ ...prev, mortality_count: '' }));
+    } else {
+      const numValue = parseInt(value);
+      const clampedValue = Math.max(0, Math.min(currentFlockCount, numValue));
+      setFormData(prev => ({ ...prev, mortality_count: clampedValue }));
+    }
   };
 
   const handleFeedTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -90,63 +96,89 @@ const DailyOperationsLog: React.FC = () => {
   };
 
   const handleFeedBagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const bags = parseFloat(e.target.value) || 0;
-    const kg = bags * KG_PER_BAG;
-    setFormData(prev => ({ ...prev, feed_bags: bags, feed_kg: kg }));
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({ ...prev, feed_bags: '', feed_kg: '' }));
+    } else {
+      const bags = parseFloat(value);
+      const kg = bags * KG_PER_BAG;
+      setFormData(prev => ({ ...prev, feed_bags: bags, feed_kg: kg }));
+    }
   };
 
   const handleFeedKgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const kg = parseFloat(e.target.value) || 0;
-    const bags = kg / KG_PER_BAG;
-    setFormData(prev => ({ ...prev, feed_kg: kg, feed_bags: bags }));
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({ ...prev, feed_kg: '', feed_bags: '' }));
+    } else {
+      const kg = parseFloat(value);
+      const bags = kg / KG_PER_BAG;
+      setFormData(prev => ({ ...prev, feed_kg: kg, feed_bags: bags }));
+    }
   };
 
   const handleWaterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const liters = parseFloat(e.target.value) || 0;
-    setFormData(prev => ({ ...prev, water_intake_liters: liters }));
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({ ...prev, water_intake_liters: '' }));
+    } else {
+      const liters = parseFloat(value);
+      setFormData(prev => ({ ...prev, water_intake_liters: liters }));
+    }
   };
 
   const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, notes: e.target.value }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Validation
-    if (formData.mortality_count > currentFlockCount) {
+    if (Number(formData.mortality_count) > currentFlockCount) {
       alert(`Mortality cannot exceed current flock count (${currentFlockCount})`);
       return;
     }
 
-    // In production, this would be an API call
-    const logEntry = {
-      ...formData,
-      batch_name: batchName,
-      remaining_flock: currentFlockCount - formData.mortality_count,
-      created_at: new Date().toISOString()
-    };
-
-    console.log('Daily Log Entry:', logEntry);
-    setShowSummary(true);
-
-    // Reset form after 3 seconds
-    setTimeout(() => {
-      setShowSummary(false);
-      setStep(1);
-      setFormData({
-        log_date: new Date().toISOString().split('T')[0],
-        mortality_count: 0,
-        feed_type: 'Starters Mash',
-        feed_input_mode: 'bags',
-        feed_bags: 0,
-        feed_kg: 0,
-        water_intake_liters: 0,
-        notes: '',
-        logged_by: 'Farm Manager'
+    try {
+      const response = await fetch("/api/daily-logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
       });
-    }, 3000);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create daily log");
+      }
+
+      const result = await response.json();
+      console.log("Daily log created successfully:", result);
+      setShowSummary(true);
+
+      // Reset form after 3 seconds
+      setTimeout(() => {
+        setShowSummary(false);
+        setStep(1);
+        setFormData({
+          log_date: new Date().toISOString().split('T')[0],
+          mortality_count: '',
+          feed_type: 'Starters Mash',
+          feed_input_mode: 'bags',
+          feed_bags: '',
+          feed_kg: '',
+          water_intake_liters: '',
+          notes: '',
+          logged_by: 'Farm Manager'
+        });
+      }, 3000);
+    } catch (error) {
+      console.error("Error creating daily log:", error);
+      alert(`Failed to save daily log: ${(error as Error).message}`);
+    }
   };
 
-  const remainingFlock = currentFlockCount - formData.mortality_count;
+  const remainingFlock = currentFlockCount - Number(formData.mortality_count);
 
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center mb-8">
@@ -303,13 +335,13 @@ const DailyOperationsLog: React.FC = () => {
                       onChange={handleFeedBagsChange}
                       step="0.5"
                       min="0"
-                      placeholder="e.g., 2"
+                      placeholder="0"
                       className="w-full p-4 text-3xl font-bold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
                     />
                     <p className="text-xs text-slate-500 mt-2">
                       Assuming {KG_PER_BAG}kg per bag
                     </p>
-                    {formData.feed_bags > 0 && (
+                    {Number(formData.feed_bags) > 0 && (
                       <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
                         <p className="text-sm text-blue-800">
                           <span className="font-semibold">{formData.feed_bags} bags</span> = <span className="font-bold text-lg">{formData.feed_kg}kg</span>
@@ -332,10 +364,10 @@ const DailyOperationsLog: React.FC = () => {
                     <p className="text-xs text-slate-500 mt-2">
                       Enter precise weight in kilograms
                     </p>
-                    {formData.feed_kg > 0 && (
+                    {Number(formData.feed_kg) > 0 && (
                       <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
                         <p className="text-sm text-blue-800">
-                          <span className="font-semibold">{formData.feed_kg}kg</span> ≈ <span className="font-bold text-lg">{formData.feed_bags.toFixed(2)} bags</span>
+                          <span className="font-semibold">{formData.feed_kg}kg</span> ≈ <span className="font-bold text-lg">{Number(formData.feed_bags).toFixed(2)} bags</span>
                         </p>
                       </div>
                     )}
@@ -364,17 +396,17 @@ const DailyOperationsLog: React.FC = () => {
                   onChange={handleWaterChange}
                   step="1"
                   min="0"
-                  placeholder="e.g., 250"
+                  placeholder="0"
                   className="w-full p-4 text-3xl font-bold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
                 />
                 <p className="text-xs text-slate-500 mt-3">
                   Total liters of water consumed by the flock today
                 </p>
 
-                {formData.water_intake_liters > 0 && (
+                {Number(formData.water_intake_liters) > 0 && (
                   <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-sm text-blue-800">
-                      Average per bird: <span className="font-bold text-lg">{(formData.water_intake_liters / currentFlockCount).toFixed(2)}L</span>
+                      Average per bird: <span className="font-bold text-lg">{(Number(formData.water_intake_liters) / currentFlockCount).toFixed(2)}L</span>
                     </p>
                   </div>
                 )}
@@ -405,7 +437,7 @@ const DailyOperationsLog: React.FC = () => {
                 {/* Minus Button */}
                 <button
                   onClick={() => handleMortalityChange(-1)}
-                  disabled={formData.mortality_count === 0}
+                  disabled={Number(formData.mortality_count) === 0}
                   className="w-16 h-16 flex items-center justify-center bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 disabled:text-gray-400 rounded-lg border-2 border-red-300 disabled:border-gray-200 transition-all"
                 >
                   <Minus size={28} />
@@ -417,6 +449,7 @@ const DailyOperationsLog: React.FC = () => {
                     type="number"
                     value={formData.mortality_count}
                     onChange={handleMortalityInput}
+                    placeholder="0"
                     min={0}
                     max={currentFlockCount}
                     className="w-full p-5 text-center text-5xl font-bold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
@@ -426,7 +459,7 @@ const DailyOperationsLog: React.FC = () => {
                 {/* Plus Button */}
                 <button
                   onClick={() => handleMortalityChange(1)}
-                  disabled={formData.mortality_count >= currentFlockCount}
+                  disabled={Number(formData.mortality_count) >= currentFlockCount}
                   className="w-16 h-16 flex items-center justify-center bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 disabled:text-gray-400 rounded-lg border-2 border-red-300 disabled:border-gray-200 transition-all"
                 >
                   <Plus size={28} />
@@ -439,14 +472,14 @@ const DailyOperationsLog: React.FC = () => {
                   <Info size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
                   <div className="flex-1">
                     <p className="text-slate-600 text-base">
-                      Birds lost today: <span className="font-bold text-slate-900 text-xl">{formData.mortality_count}</span>
+                      Birds lost today: <span className="font-bold text-slate-900 text-xl">{formData.mortality_count || 0}</span>
                     </p>
-                    {formData.mortality_count > 0 && (
+                    {Number(formData.mortality_count) > 0 && (
                       <p className="text-slate-600 mt-2 text-base">
                         Remaining flock: <span className="font-bold text-green-600 text-xl">{remainingFlock} birds</span>
                       </p>
                     )}
-                    {formData.mortality_count >= currentFlockCount && (
+                    {Number(formData.mortality_count) >= currentFlockCount && (
                       <p className="text-red-600 font-medium mt-2">⚠️ Cannot exceed current flock count!</p>
                     )}
                   </div>
@@ -489,7 +522,7 @@ const DailyOperationsLog: React.FC = () => {
                   </div>
                   <div className="text-sm space-y-1">
                     <p className="text-green-800"><span className="font-medium">Type:</span> {formData.feed_type}</p>
-                    <p className="text-green-800"><span className="font-medium">Amount:</span> {formData.feed_kg}kg ({formData.feed_bags.toFixed(2)} bags)</p>
+                    <p className="text-green-800"><span className="font-medium">Amount:</span> {formData.feed_kg}kg ({Number(formData.feed_bags).toFixed(2)} bags)</p>
                   </div>
                 </div>
 
@@ -501,25 +534,25 @@ const DailyOperationsLog: React.FC = () => {
                   </div>
                   <div className="text-sm space-y-1">
                     <p className="text-blue-800"><span className="font-medium">Total:</span> {formData.water_intake_liters} liters</p>
-                    <p className="text-blue-800"><span className="font-medium">Per bird:</span> {(formData.water_intake_liters / currentFlockCount).toFixed(2)}L</p>
+                    <p className="text-blue-800"><span className="font-medium">Per bird:</span> {(Number(formData.water_intake_liters) / currentFlockCount).toFixed(2)}L</p>
                   </div>
                 </div>
 
                 {/* Mortality Summary */}
-                <div className={`border-2 rounded-lg p-4 ${formData.mortality_count > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                <div className={`border-2 rounded-lg p-4 ${Number(formData.mortality_count) > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
                   <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle size={20} className={formData.mortality_count > 0 ? 'text-red-600' : 'text-gray-600'} />
-                    <h3 className={`font-semibold ${formData.mortality_count > 0 ? 'text-red-900' : 'text-gray-900'}`}>Mortality</h3>
+                    <AlertTriangle size={20} className={Number(formData.mortality_count) > 0 ? 'text-red-600' : 'text-gray-600'} />
+                    <h3 className={`font-semibold ${Number(formData.mortality_count) > 0 ? 'text-red-900' : 'text-gray-900'}`}>Mortality</h3>
                   </div>
                   <div className="text-sm space-y-1">
-                    <p className={formData.mortality_count > 0 ? 'text-red-800' : 'text-gray-800'}>
-                      <span className="font-medium">Birds lost:</span> {formData.mortality_count}
+                    <p className={Number(formData.mortality_count) > 0 ? 'text-red-800' : 'text-gray-800'}>
+                      <span className="font-medium">Birds lost:</span> {formData.mortality_count || 0}
                     </p>
-                    <p className={formData.mortality_count > 0 ? 'text-red-800' : 'text-gray-800'}>
+                    <p className={Number(formData.mortality_count) > 0 ? 'text-red-800' : 'text-gray-800'}>
                       <span className="font-medium">Remaining:</span> {remainingFlock} birds
                     </p>
                     {formData.notes && (
-                      <p className={formData.mortality_count > 0 ? 'text-red-800' : 'text-gray-800'}>
+                      <p className={Number(formData.mortality_count) > 0 ? 'text-red-800' : 'text-gray-800'}>
                         <span className="font-medium">Notes:</span> {formData.notes}
                       </p>
                     )}
@@ -593,12 +626,12 @@ const DailyOperationsLog: React.FC = () => {
 
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-lg ${formData.mortality_count > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
+            <div className={`p-3 rounded-lg ${Number(formData.mortality_count) > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
               <AlertTriangle size={24} />
             </div>
             <div>
               <p className="text-xs text-slate-600">Mortality (Step 3)</p>
-              <p className="text-2xl font-bold text-slate-900">{formData.mortality_count}</p>
+              <p className="text-2xl font-bold text-slate-900">{formData.mortality_count || 0}</p>
             </div>
           </div>
         </div>

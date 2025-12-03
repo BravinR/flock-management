@@ -1,17 +1,18 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { 
-  ChevronRight, 
-  ChevronLeft, 
-  CheckCircle2, 
-  Calculator, 
-  Home, 
-  DollarSign, 
-  ClipboardList, 
-  Plus, 
-  Trash2 
+import {
+  ChevronRight,
+  ChevronLeft,
+  CheckCircle2,
+  Calculator,
+  Home,
+  DollarSign,
+  ClipboardList,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 
 // --- Types based on your Schema ---
 
@@ -20,10 +21,10 @@ type PaymentStatus = 'paid' | 'partial' | 'pending';
 
 interface CoopAllocation {
   coop_id: string;
-  allocated_quantity: number;
+  allocated_quantity: number| string;
   placement_date: string;
   notes: string;
-  initial_mortality: number;
+  initial_mortality: number|string;
 }
 
 interface BatchFormData {
@@ -66,7 +67,7 @@ const CreateBatchForm: React.FC = () => {
     coop_allocations: [
       {
         coop_id: '',
-        allocated_quantity: 0,
+        allocated_quantity: '',
         placement_date: new Date().toISOString().split('T')[0],
         notes: '',
         initial_mortality: 0
@@ -102,7 +103,9 @@ const CreateBatchForm: React.FC = () => {
     const newAllocations = [...formData.coop_allocations];
     newAllocations[index] = {
       ...newAllocations[index],
-      [field]: field === 'allocated_quantity' || field === 'initial_mortality' ? Number(value) : value
+      [field]: field === 'allocated_quantity' || field === 'initial_mortality'
+        ? (value === '' ? '' : Number(value))
+        : value
     };
     setFormData(prev => ({ ...prev, coop_allocations: newAllocations }));
   };
@@ -114,7 +117,7 @@ const CreateBatchForm: React.FC = () => {
         ...prev.coop_allocations,
         {
           coop_id: '',
-          allocated_quantity: 0,
+          allocated_quantity: '',
           placement_date: formData.arrival_date,
           notes: '',
           initial_mortality: 0
@@ -128,7 +131,7 @@ const CreateBatchForm: React.FC = () => {
     setFormData(prev => ({ ...prev, coop_allocations: newAllocations }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Construct the final payload matching your JSON schema exactly
     const payload = {
       ...formData,
@@ -137,11 +140,76 @@ const CreateBatchForm: React.FC = () => {
       total_acquisition_cost: totalAcquisitionCost,
       balance_due: balanceDue,
       payment_status: paymentStatus,
-      created_at: new Date().toISOString(),
-      // Add logic here to send to backend
     };
-    console.log("Submitting Payload:", payload);
-    alert("Batch Created! Check console for JSON payload.");
+
+    // Show loading toast
+    const loadingToast = toast.loading("Creating batch...");
+
+    try {
+      const response = await fetch("/api/batches", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        toast.dismiss(loadingToast);
+        toast.error("Failed to create batch", {
+          description: error.error || error.details || "Something went wrong",
+          duration: 6000,
+        });
+        return;
+      }
+
+      const result = await response.json();
+      console.log("Batch created successfully:", result);
+
+      // Dismiss loading toast and show success
+      toast.dismiss(loadingToast);
+      toast.success(`Batch "${result.name}" created successfully!`, {
+        description: `Batch ID: ${result.batchId}`,
+        duration: 5000,
+      });
+
+      // Reset form after short delay
+      setTimeout(() => {
+        setStep(1);
+        setFormData({
+          batch_name: `Batch-${new Date().toISOString().split('T')[0]}`,
+          supplier: 'Kenchic',
+          breed: 'Layers',
+          arrival_date: new Date().toISOString().split('T')[0],
+          intake_age_days: 1,
+          initial_quantity: 0,
+          currency: 'KES',
+          cost_per_bird: 0,
+          transport_cost: 0,
+          equipment_cost: 0,
+          amount_paid_upfront: 0,
+          coop_allocations: [
+            {
+              coop_id: '',
+              allocated_quantity: '',
+              placement_date: new Date().toISOString().split('T')[0],
+              notes: '',
+              initial_mortality: 0
+            }
+          ]
+        });
+      }, 1000);
+    } catch (error) {
+      console.error("Error creating batch:", error);
+
+      // Dismiss loading toast and show error (for network errors, etc.)
+      toast.dismiss(loadingToast);
+      toast.error("Network error", {
+        description: (error as Error).message || "Unable to connect to server",
+        duration: 6000,
+      });
+    }
   };
 
   // --- Steps Rendering ---

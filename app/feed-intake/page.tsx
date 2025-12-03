@@ -164,7 +164,7 @@ const FeedIntakePage: React.FC = () => {
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Validation
     if (formData.feed_type === 'Other' && !formData.custom_feed_name.trim()) {
       alert('Please enter the custom feed name');
@@ -181,37 +181,49 @@ const FeedIntakePage: React.FC = () => {
       return;
     }
 
-    // In production, this would be an API call
-    const intakeRecord = {
-      ...formData,
-      created_at: new Date().toISOString(),
-      feed_name: formData.feed_type === 'Other' ? formData.custom_feed_name : formData.feed_type
-    };
-
-    console.log('Feed Intake Record:', intakeRecord);
-    setShowSuccess(true);
-
-    // Reset form after 3 seconds
-    setTimeout(() => {
-      setShowSuccess(false);
-      setFormData({
-        delivery_date: new Date().toISOString().split('T')[0],
-        feed_type: 'Starters Mash',
-        custom_feed_name: '',
-        supplier: 'Pembe Feeds',
-        input_mode: 'bags',
-        bags_received: 0,
-        kg_received: 0,
-        cost_per_bag: 0,
-        cost_per_kg: 0,
-        total_cost: 0,
-        currency: 'KES',
-        batch_number: '',
-        invoice_number: '',
-        notes: '',
-        received_by: 'Farm Manager'
+    try {
+      const response = await fetch("/api/feed-intakes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
       });
-    }, 3000);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to record feed intake");
+      }
+
+      const result = await response.json();
+      console.log('Feed intake recorded successfully:', result);
+      setShowSuccess(true);
+
+      // Reset form after 3 seconds
+      setTimeout(() => {
+        setShowSuccess(false);
+        setFormData({
+          delivery_date: new Date().toISOString().split('T')[0],
+          feed_type: 'Starters Mash',
+          custom_feed_name: '',
+          supplier: 'Pembe Feeds',
+          input_mode: 'bags',
+          bags_received: 0,
+          kg_received: 0,
+          cost_per_bag: 0,
+          cost_per_kg: 0,
+          total_cost: 0,
+          currency: 'KES',
+          batch_number: '',
+          invoice_number: '',
+          notes: '',
+          received_by: 'Farm Manager'
+        });
+      }, 3000);
+    } catch (error) {
+      console.error("Error recording feed intake:", error);
+      alert(`Failed to record feed intake: ${(error as Error).message}`);
+    }
   };
 
   return (
