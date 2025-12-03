@@ -1,540 +1,762 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Calendar,
-  Syringe,
+  ChevronRight,
+  ChevronLeft,
   CheckCircle2,
-  AlertCircle,
-  Clock,
+  Calculator,
+  Home,
   DollarSign,
-  FileText,
-  X,
-  Check,
-  Plus
+  ClipboardList,
+  Plus,
+  Trash2
 } from 'lucide-react';
+import clsx from 'clsx';
+import { toast } from 'sonner';
 
-// --- Types ---
+// --- Types based on your Schema ---
 
-type VaccineStatus = 'pending' | 'completed' | 'overdue' | 'upcoming';
+type Breed = 'Layers' | 'Broilers' | 'Kenbro';
+type PaymentStatus = 'paid' | 'partial' | 'pending';
 
-interface VaccineSchedule {
-  id: string;
-  vaccine_name: string;
-  week_number: number;
-  scheduled_date: string;
-  status: VaccineStatus;
-  description?: string;
-}
-
-interface VaccineAdministration {
-  schedule_id: string;
-  administration_date: string;
-  full_flock_vaccinated: boolean;
-  head_count_vaccinated?: number;
-  cost: number;
-  currency: string;
+interface CoopAllocation {
+  coop_id: string;
+  allocated_quantity: number| string;
+  placement_date: string;
   notes: string;
-  administered_by: string;
+  initial_mortality: number|string;
 }
 
-// --- Sample Data (In production, this would come from API) ---
-
-const VACCINE_SCHEDULES: VaccineSchedule[] = [
-  {
-    id: '1',
-    vaccine_name: 'Marek\'s Disease',
-    week_number: 0,
-    scheduled_date: '2025-01-01',
-    status: 'completed',
-    description: 'Given at hatchery or day 1'
-  },
-  {
-    id: '2',
-    vaccine_name: 'Newcastle Disease (ND)',
-    week_number: 1,
-    scheduled_date: '2025-01-08',
-    status: 'completed',
-    description: 'First dose via eye drop or spray'
-  },
-  {
-    id: '3',
-    vaccine_name: 'Infectious Bursal Disease (Gumboro)',
-    week_number: 2,
-    scheduled_date: '2025-01-15',
-    status: 'pending',
-    description: 'Drinking water administration'
-  },
-  {
-    id: '4',
-    vaccine_name: 'Newcastle Disease (ND) - Booster',
-    week_number: 4,
-    scheduled_date: '2025-01-29',
-    status: 'upcoming',
-    description: 'Second dose booster'
-  },
-  {
-    id: '5',
-    vaccine_name: 'Fowl Pox',
-    week_number: 6,
-    scheduled_date: '2025-02-12',
-    status: 'upcoming',
-    description: 'Wing web method'
-  },
-  {
-    id: '6',
-    vaccine_name: 'Fowl Typhoid',
-    week_number: 8,
-    scheduled_date: '2025-02-26',
-    status: 'upcoming',
-    description: 'Intramuscular injection'
-  },
-];
+interface BatchFormData {
+  // Basic Info
+  batch_name: string;
+  supplier: string;
+  breed: Breed;
+  arrival_date: string;
+  intake_age_days: number;
+  initial_quantity: number;
+  // Financials
+  currency: string;
+  cost_per_bird: number;
+  transport_cost: number;
+  equipment_cost: number;
+  amount_paid_upfront: number;
+  
+  // Allocations
+  coop_allocations: CoopAllocation[];
+}
 
 // --- Component ---
 
-const VaccineTrackingPage: React.FC = () => {
-  const [schedules, setSchedules] = useState<VaccineSchedule[]>(VACCINE_SCHEDULES);
-  const [selectedSchedule, setSelectedSchedule] = useState<VaccineSchedule | null>(null);
-  const [showAdminForm, setShowAdminForm] = useState(false);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    schedule_id: '',
-    custom_vaccine_name: '',
-    administration_date: new Date().toISOString().split('T')[0],
-    full_flock_vaccinated: true,
-    head_count_vaccinated: 0,
-    cost: 0,
+const CreateBatchForm: React.FC = () => {
+  const [step, setStep] = useState(1);
+  
+  // Initial State with smart defaults
+  const [formData, setFormData] = useState<BatchFormData>({
+    batch_name: `Batch-${new Date().toISOString().split('T')[0]}`, // Auto-generate name
+    supplier: 'Kenchic', // Default supplier
+    breed: 'Layers',
+    arrival_date: new Date().toISOString().split('T')[0], // Today
+    intake_age_days: 1, // Default to Day-Old Chick
+    initial_quantity: 0,
     currency: 'KES',
-    notes: '',
-    administered_by: 'Admin'
+    cost_per_bird: 0,
+    transport_cost: 0,
+    equipment_cost: 0,
+    amount_paid_upfront: 0,
+    coop_allocations: [
+      {
+        coop_id: '',
+        allocated_quantity: '',
+        placement_date: new Date().toISOString().split('T')[0],
+        notes: '',
+        initial_mortality: 0
+      }
+    ]
   });
 
-  const totalBirds = 500; // This would come from the batch data
+  // Derived Financial Calculations
+  const totalAcquisitionCost = formData.initial_quantity * formData.cost_per_bird + formData.transport_cost + formData.equipment_cost;
+  const balanceDue = totalAcquisitionCost - formData.amount_paid_upfront;
+  const paymentStatus: PaymentStatus = balanceDue <= 0 ? 'paid' : (formData.amount_paid_upfront > 0 ? 'partial' : 'pending');
 
-  const handleScheduleClick = (schedule: VaccineSchedule) => {
-    setSelectedSchedule(schedule);
-    setShowAdminForm(true);
-    setFormData({
-      schedule_id: schedule.id,
-      custom_vaccine_name: '',
-      administration_date: new Date().toISOString().split('T')[0],
-      full_flock_vaccinated: true,
-      head_count_vaccinated: totalBirds,
-      cost: 0,
-      currency: 'KES',
-      notes: '',
-      administered_by: 'Admin'
-    });
-  };
+  // Derived Allocation Calculations
+  const totalAllocated = formData.coop_allocations.reduce((acc, curr) => acc + Number(curr.allocated_quantity), 0);
+  const unallocatedQuantity = formData.initial_quantity - totalAllocated;
 
-  const openAdminForm = () => {
-    // Open form without a pre-selected schedule (user will select from dropdown)
-    setSelectedSchedule(null);
-    setShowAdminForm(true);
-    setFormData({
-      schedule_id: '',
-      custom_vaccine_name: '',
-      administration_date: new Date().toISOString().split('T')[0],
-      full_flock_vaccinated: true,
-      head_count_vaccinated: totalBirds,
-      cost: 0,
-      currency: 'KES',
-      notes: '',
-      administered_by: 'Admin'
-    });
-  };
+  // --- Handlers ---
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      setFormData(prev => ({
-        ...prev,
-        [name]: checked,
-        // If checking "full flock", set count to total, otherwise reset to 0
-        ...(name === 'full_flock_vaccinated' && {
-          head_count_vaccinated: checked ? totalBirds : 0
-        })
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: type === 'number' ? (value === '' ? 0 : parseFloat(value)) : value
-      }));
-    }
+    setFormData(prev => ({
+      ...prev,
+      [name]:
+        type === "number"
+          ? value === ""                      // allow empty
+              ? ""                            // so user can delete
+              : parseFloat(value)
+          : value
+    }));
   };
 
-  const handleSubmit = () => {
-    // If no schedule selected, user must select from dropdown
-    const scheduleId = selectedSchedule?.id || formData.schedule_id;
+  const handleAllocationChange = (index: number, field: keyof CoopAllocation, value: any) => {
+    const newAllocations = [...formData.coop_allocations];
+    newAllocations[index] = {
+      ...newAllocations[index],
+      [field]: field === 'allocated_quantity' || field === 'initial_mortality'
+        ? (value === '' ? '' : Number(value))
+        : value
+    };
+    setFormData(prev => ({ ...prev, coop_allocations: newAllocations }));
+  };
 
-    // If "other" is selected, validate custom vaccine name
-    if (scheduleId === 'other') {
-      if (!formData.custom_vaccine_name.trim()) {
-        alert('Please enter the vaccine name');
+  const addAllocationRow = () => {
+    setFormData(prev => ({
+      ...prev,
+      coop_allocations: [
+        ...prev.coop_allocations,
+        {
+          coop_id: '',
+          allocated_quantity: '',
+          placement_date: formData.arrival_date,
+          notes: '',
+          initial_mortality: 0
+        }
+      ]
+    }));
+  };
+
+  const removeAllocationRow = (index: number) => {
+    const newAllocations = formData.coop_allocations.filter((_, i) => i !== index);
+    setFormData(prev => ({ ...prev, coop_allocations: newAllocations }));
+  };
+
+  const handleSubmit = async () => {
+    // Construct the final payload matching your JSON schema exactly
+    const payload = {
+      ...formData,
+      total_allocated: totalAllocated,
+      unallocated_quantity: unallocatedQuantity,
+      total_acquisition_cost: totalAcquisitionCost,
+      balance_due: balanceDue,
+      payment_status: paymentStatus,
+    };
+
+    // Show loading toast
+    const loadingToast = toast.loading("Creating batch...");
+
+    try {
+      const response = await fetch("/api/batches", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        toast.dismiss(loadingToast);
+        toast.error("Failed to create batch", {
+          description: error.error || error.details || "Something went wrong",
+          duration: 6000,
+        });
         return;
       }
-    } else if (!scheduleId) {
-      alert('Please select a vaccine from the list');
-      return;
-    }
 
-    // In production, this would be an API call
-    const administration: VaccineAdministration = {
-      ...formData
-    };
+      const result = await response.json();
+      console.log("Batch created successfully:", result);
 
-    console.log('Vaccine Administration:', administration);
+      // Dismiss loading toast and show success
+      toast.dismiss(loadingToast);
+      toast.success(`Batch "${result.name}" created successfully!`, {
+        description: `Batch ID: ${result.batchId}`,
+        duration: 5000,
+      });
 
-    // Update the schedule status (only if not "other")
-    if (scheduleId !== 'other') {
-      setSchedules(prev => prev.map(s =>
-        s.id === scheduleId
-          ? { ...s, status: 'completed' as VaccineStatus }
-          : s
-      ));
-    }
+      // Reset form after short delay
+      setTimeout(() => {
+        setStep(1);
+        setFormData({
+          batch_name: `Batch-${new Date().toISOString().split('T')[0]}`,
+          supplier: 'Kenchic',
+          breed: 'Layers',
+          arrival_date: new Date().toISOString().split('T')[0],
+          intake_age_days: 1,
+          initial_quantity: 0,
+          currency: 'KES',
+          cost_per_bird: 0,
+          transport_cost: 0,
+          equipment_cost: 0,
+          amount_paid_upfront: 0,
+          coop_allocations: [
+            {
+              coop_id: '',
+              allocated_quantity: '',
+              placement_date: new Date().toISOString().split('T')[0],
+              notes: '',
+              initial_mortality: 0
+            }
+          ]
+        });
+      }, 1000);
+    } catch (error) {
+      console.error("Error creating batch:", error);
 
-    // Close form
-    setShowAdminForm(false);
-    setSelectedSchedule(null);
-
-    alert('Vaccine administration recorded successfully!');
-  };
-
-  const getStatusBadge = (status: VaccineStatus) => {
-    const styles = {
-      completed: 'bg-green-100 text-green-700 border-green-200',
-      pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-      overdue: 'bg-red-100 text-red-700 border-red-200',
-      upcoming: 'bg-blue-100 text-blue-700 border-blue-200'
-    };
-
-    const icons = {
-      completed: <CheckCircle2 size={14} />,
-      pending: <Clock size={14} />,
-      overdue: <AlertCircle size={14} />,
-      upcoming: <Calendar size={14} />
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1 ${styles[status]}`}>
-        {icons[status]}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    );
-  };
-
-  const getStatusIcon = (status: VaccineStatus) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="text-green-500" size={24} />;
-      case 'overdue':
-        return <AlertCircle className="text-red-500" size={24} />;
-      case 'pending':
-        return <Clock className="text-yellow-500" size={24} />;
-      default:
-        return <Calendar className="text-blue-500" size={24} />;
+      // Dismiss loading toast and show error (for network errors, etc.)
+      toast.dismiss(loadingToast);
+      toast.error("Network error", {
+        description: (error as Error).message || "Unable to connect to server",
+        duration: 6000,
+      });
     }
   };
+
+  // --- Steps Rendering ---
+
+const renderStepIndicator = () => (
+  <div className="flex items-center justify-center mb-4 md:mb-8 lg:mb-12 px-2 overflow-x-auto">
+    {[
+      { id: 1, label: 'Basic Info', icon: ClipboardList },
+      { id: 2, label: 'Quantity', icon: Calculator },
+      { id: 3, label: 'Financials', icon: DollarSign },
+      { id: 4, label: 'Allocations', icon: Home },
+      { id: 5, label: 'Review', icon: CheckCircle2 },
+    ].map((s, idx: number) => (
+      <div key={s.id} className={clsx(
+        'flex items-center flex-shrink-0',
+        'lg:flex-1 lg:justify-center'
+      )}>
+        <div className={clsx(
+          'flex flex-col items-center',
+          step === s.id ? 'text-blue-600' : 'text-gray-400'
+        )}>
+          <div className={clsx(
+            'w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center border-2 flex-shrink-0',
+            step === s.id && 'border-blue-600 bg-blue-50',
+            step > s.id && 'border-green-500 bg-green-50 text-green-600',
+            step < s.id && 'border-gray-200'
+          )}>
+            <s.icon size={step < 3 ? 16 : step < 4 ? 20 : 24} />
+          </div>
+          <span className={clsx(
+            'mt-1 font-medium flex-shrink-0 text-center',
+            step < 3 && 'text-xs',
+            step >= 3 && 'text-xs md:text-sm lg:text-base'
+          )}>
+            {step < 3 ? s.label.split(' ')[0] : s.label}
+          </span>
+        </div>
+        {idx !== 4 && (
+          <div className={clsx(
+            'h-1 flex-shrink-0 lg:flex-1',
+            step > s.id ? 'bg-green-500' : 'bg-gray-200'
+          )}
+            style={{ 
+              width: step < 3 ? '6px' : '12px', 
+              margin: step < 3 ? '0 4px' : '0 8px'
+            }}
+          />
+        )}
+      </div>
+    ))}
+  </div>
+);
 
   return (
-    <div className="max-w-6xl mx-auto p-6 font-sans text-slate-800">
-
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Syringe className="text-blue-600" />
-            Vaccine Schedule & Tracking
-          </h1>
-          <p className="text-slate-500 mt-1">Track vaccination schedule and record administrations</p>
-        </div>
-        <button
-          onClick={openAdminForm}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium shadow-sm transition-all"
-        >
-          <Plus size={20} />
-          Record Vaccination
-        </button>
+    <div className="max-w-4xl mx-auto p-6 bg-gray-50 min-h-screen font-sans text-slate-800">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">
+          New Flock Registration
+        </h1>
+        <p className="text-slate-500">
+          Register a new batch acting as the Source of Truth.
+        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Completed', count: schedules.filter(s => s.status === 'completed').length, color: 'green' },
-          { label: 'Pending', count: schedules.filter(s => s.status === 'pending').length, color: 'yellow' },
-          { label: 'Overdue', count: schedules.filter(s => s.status === 'overdue').length, color: 'red' },
-          { label: 'Upcoming', count: schedules.filter(s => s.status === 'upcoming').length, color: 'blue' },
-        ].map((stat) => (
-          <div key={stat.label} className={`bg-white rounded-lg border-2 border-${stat.color}-200 p-4`}>
-            <p className="text-sm text-slate-600">{stat.label}</p>
-            <p className={`text-3xl font-bold text-${stat.color}-600`}>{stat.count}</p>
-          </div>
-        ))}
-      </div>
+      {renderStepIndicator()}
 
-      {/* Vaccine Schedule List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-6 border-b border-gray-200 bg-slate-50">
-          <h2 className="text-lg font-semibold text-slate-900">Vaccination Timeline</h2>
-          <p className="text-sm text-slate-500 mt-1">Click on any vaccine to view details or record administration</p>
-        </div>
-
-        <div className="divide-y divide-gray-200">
-          {schedules.map((schedule, index) => (
-            <div
-              key={schedule.id}
-              onClick={() => handleScheduleClick(schedule)}
-              className="p-6 hover:bg-slate-50 transition-colors cursor-pointer"
-            >
-              <div className="flex items-start gap-4">
-                {/* Icon */}
-                <div className="flex-shrink-0">
-                  {getStatusIcon(schedule.status)}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-900">{schedule.vaccine_name}</h3>
-                      <p className="text-sm text-slate-600 mt-1">{schedule.description}</p>
-                    </div>
-                    {getStatusBadge(schedule.status)}
-                  </div>
-
-                  <div className="flex items-center gap-6 mt-3 text-sm text-slate-600">
-                    <div className="flex items-center gap-1">
-                      <Calendar size={16} />
-                      <span>Week {schedule.week_number}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock size={16} />
-                      <span>{new Date(schedule.scheduled_date).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Administration Form Modal */}
-      {showAdminForm && (
-        <div className="fixed inset-0 lg:left-64 bg-gray-500 bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+        <div className="p-8">
+          {/* STEP 1: BASIC INFO */}
+          {step === 1 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
-                  <Syringe className="text-blue-500" />
-                  Administer Vaccine
+                <h2 className="text-xl font-semibold flex items-center gap-2 text-slate-900">
+                  <ClipboardList className="text-blue-500" size={24} /> Basic
+                  Information
                 </h2>
-                {selectedSchedule && (
-                  <p className="text-sm text-slate-600 mt-1">{selectedSchedule.vaccine_name} - Week {selectedSchedule.week_number}</p>
-                )}
+                <p className="text-sm text-slate-500 mt-1">
+                  Basic information about the batch
+                </p>
               </div>
-              <button
-                onClick={() => setShowAdminForm(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Batch Name
+                  </label>
+                  <input
+                    type="text"
+                    name="batch_name"
+                    value={formData.batch_name}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Custom display name for this batch
+                  </p>
+                </div>
 
-              {/* Vaccine Selector - Only show if no vaccine pre-selected */}
-              {!selectedSchedule && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Select Vaccine
-                    </label>
-                    <select
-                      name="schedule_id"
-                      value={formData.schedule_id}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Supplier
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="suppliers"
+                      name="supplier"
+                      value={formData.supplier}
                       onChange={handleChange}
                       className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                      <option value="">Choose a vaccine...</option>
-                      {schedules.map((schedule) => (
-                        <option key={schedule.id} value={schedule.id}>
-                          Week {schedule.week_number}: {schedule.vaccine_name} - {schedule.status}
-                        </option>
-                      ))}
-                      <option value="other">Other (Custom Vaccine)</option>
-                    </select>
-                    <p className="text-xs text-slate-500 mt-1">Select which vaccine was administered</p>
-                  </div>
-
-                  {/* Custom Vaccine Name - Only show if "Other" is selected */}
-                  {formData.schedule_id === 'other' && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Vaccine Name
-                      </label>
-                      <input
-                        type="text"
-                        name="custom_vaccine_name"
-                        value={formData.custom_vaccine_name}
-                        onChange={handleChange}
-                        placeholder="Enter vaccine name (e.g., Avian Influenza, Salmonella)"
-                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                      <p className="text-xs text-slate-500 mt-1">Type the name of the vaccine you administered</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Administration Date */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Administration Date
-                </label>
-                <input
-                  type="date"
-                  name="administration_date"
-                  value={formData.administration_date}
-                  onChange={handleChange}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <p className="text-xs text-slate-500 mt-1">Did you give it today? If not, select the actual date.</p>
-              </div>
-
-              {/* Full Flock Vaccination */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="full_flock"
-                    name="full_flock_vaccinated"
-                    checked={formData.full_flock_vaccinated}
-                    onChange={handleChange}
-                    className="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <div className="flex-1">
-                    <label htmlFor="full_flock" className="font-medium text-slate-900 cursor-pointer">
-                      Was the whole flock vaccinated?
-                    </label>
-                    <p className="text-xs text-slate-600 mt-1">Total birds in batch: {totalBirds}</p>
-                  </div>
-                </div>
-
-                {/* Conditional: Head Count Input */}
-                {!formData.full_flock_vaccinated && (
-                  <div className="mt-4 pl-7">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Head Count Vaccinated
-                    </label>
-                    <input
-                      type="number"
-                      name="head_count_vaccinated"
-                      value={formData.head_count_vaccinated}
-                      onChange={handleChange}
-                      max={totalBirds}
-                      className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
                     />
-                    <p className="text-xs text-slate-500 mt-1">
-                      How many birds received the vaccine? (Max: {totalBirds})
-                    </p>
+                    <datalist id="suppliers">
+                      <option value="Kenchic" />
+                      <option value="Kutuku" />
+                      <option value="Local Breeder" />
+                    </datalist>
                   </div>
-                )}
+                  <p className="text-xs text-slate-500 mt-1">
+                    Who is supplying these birds?
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Breed Type
+                  </label>
+                  <select
+                    name="breed"
+                    value={formData.breed}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="Layers">Layers</option>
+                    <option value="Broilers">Broilers</option>
+                    <option value="Kenbro">Kenbro</option>
+                  </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    What breed of birds are these?
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: QUANTITY & TIMING */}
+          {step === 2 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div>
+                <h2 className="text-xl font-semibold flex items-center gap-2 text-slate-900">
+                  <Calculator className="text-blue-500" size={24} /> Quantity &
+                  Timing
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Details about batch size and arrival
+                </p>
               </div>
 
-              {/* Cost Input */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
-                  <DollarSign size={16} />
-                  Medicine Cost
-                </label>
-                <div className="flex gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Total Quantity
+                  </label>
+                  <input
+                    type="number"
+                    name="initial_quantity"
+                    value={formData.initial_quantity}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    How many birds in this batch?
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Intake Age (Days)
+                  </label>
+                  <input
+                    type="number"
+                    name="intake_age_days"
+                    value={formData.intake_age_days}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    At what age are the birds when they arrive? (1 for Day-Old
+                    Chicks)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Arrival Date
+                  </label>
+                  <input
+                    type="date"
+                    name="arrival_date"
+                    value={formData.arrival_date}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    When do the birds arrive at the farm?
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: FINANCIALS */}
+          {step === 3 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <DollarSign className="text-blue-500" /> Financial Obligation
+              </h2>
+
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-blue-600 font-medium">
+                    Total Acquisition Cost
+                  </p>
+                  <p className="text-2xl font-bold text-blue-800">
+                    KES {totalAcquisitionCost.toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-blue-600 font-medium">
+                    Balance Due
+                  </p>
+                  <p
+                    className={`text-2xl font-bold ${
+                      balanceDue > 0 ? "text-red-600" : "text-green-600"
+                    }`}
+                  >
+                    KES {balanceDue.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Cost Per Bird
+                  </label>
+                  <input
+                    type="number"
+                    name="cost_per_bird"
+                    value={formData.cost_per_bird}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Transport Cost
+                  </label>
+                  <input
+                    type="number"
+                    name="transport_cost"
+                    value={formData.transport_cost}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Equipment/Misc
+                  </label>
+                  <input
+                    type="number"
+                    name="equipment_cost"
+                    value={formData.equipment_cost}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <hr className="border-gray-200" />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Amount Paid Upfront
+                  </label>
+                  <input
+                    type="number"
+                    name="amount_paid_upfront"
+                    value={formData.amount_paid_upfront}
+                    onChange={handleChange}
+                    className="w-full p-2.5 border border-green-200 bg-green-50 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Currency
+                  </label>
                   <select
                     name="currency"
                     value={formData.currency}
                     onChange={handleChange}
-                    className="p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-2.5 border border-gray-300 rounded-lg bg-gray-50"
                   >
-                    <option value="KES">KES</option>
+                    <option value="KES">KES (Kenyan Shilling)</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
                   </select>
-                  <input
-                    type="number"
-                    name="cost"
-                    value={formData.cost}
-                    onChange={handleChange}
-                    step="0.01"
-                    className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                  />
                 </div>
-                <p className="text-xs text-slate-500 mt-1">How much did the medicine cost?</p>
               </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
-                  <FileText size={16} />
-                  Notes & Observations
-                </label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows={4}
-                  placeholder="Any reactions? Birds looking drowsy? Any adverse effects noticed?"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                />
-                <p className="text-xs text-slate-500 mt-1">Record any observations or reactions from the flock</p>
-              </div>
-
-              {/* Administered By */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Administered By
-                </label>
-                <input
-                  type="text"
-                  name="administered_by"
-                  value={formData.administered_by}
-                  onChange={handleChange}
-                  placeholder="Your name or staff member name"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
             </div>
+          )}
 
-            {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-6 flex gap-3 justify-end">
+          {/* STEP 4: ALLOCATIONS */}
+          {step === 4 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Home className="text-blue-500" /> Coop Allocation
+                </h2>
+                <div
+                  className={`text-sm font-bold px-3 py-1 rounded-full ${
+                    unallocatedQuantity === 0
+                      ? "bg-green-100 text-green-700"
+                      : "bg-orange-100 text-orange-700"
+                  }`}
+                >
+                  {unallocatedQuantity === 0
+                    ? "All Birds Allocated"
+                    : `${unallocatedQuantity} Unallocated`}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-md text-sm text-slate-600 flex justify-between">
+                <span>
+                  Total Batch: <strong>{formData.initial_quantity}</strong>
+                </span>
+                <span>
+                  Currently Placed: <strong>{totalAllocated}</strong>
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {formData.coop_allocations.map((alloc, index) => (
+                  <div
+                    key={index}
+                    className="border border-gray-200 rounded-lg p-4 relative hover:border-blue-300 transition-colors"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-3">
+                      <div className="md:col-span-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Coop ID
+                        </label>
+                        <select
+                          value={alloc.coop_id}
+                          onChange={(e) =>
+                            handleAllocationChange(
+                              index,
+                              "coop_id",
+                              e.target.value
+                            )
+                          }
+                          className="w-full mt-1 p-2 border rounded-md bg-white"
+                        >
+                          <option value="">Select Coop...</option>
+                          <option value="coop_01">Coop 01 (East)</option>
+                          <option value="coop_02">Coop 02 (West)</option>
+                          <option value="coop_03">Coop 03 (Iso)</option>
+                        </select>
+                      </div>
+                      <div className="md:col-span-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Quantity
+                        </label>
+                        <input
+                          type="number"
+                          value={alloc.allocated_quantity}
+                          onChange={(e) =>
+                            handleAllocationChange(
+                              index,
+                              "allocated_quantity",
+                              e.target.value
+                            )
+                          }
+                          className="w-full mt-1 p-2 border rounded-md"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          Notes
+                        </label>
+                        <input
+                          type="text"
+                          value={alloc.notes}
+                          onChange={(e) =>
+                            handleAllocationChange(
+                              index,
+                              "notes",
+                              e.target.value
+                            )
+                          }
+                          placeholder="e.g. Top tier cages"
+                          className="w-full mt-1 p-2 border rounded-md"
+                        />
+                      </div>
+                    </div>
+
+                    {formData.coop_allocations.length > 1 && (
+                      <button
+                        onClick={() => removeAllocationRow(index)}
+                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1 rounded-full hover:bg-red-200"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               <button
-                onClick={() => setShowAdminForm(false)}
-                className="px-5 py-2.5 border border-gray-300 rounded-lg text-slate-700 font-medium hover:bg-gray-100 transition-colors"
+                onClick={addAllocationRow}
+                className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-500 flex items-center justify-center gap-2 font-medium transition-all"
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
-              >
-                <Check size={18} />
-                Record Administration
+                <Plus size={18} /> Add Another Coop
               </button>
             </div>
+          )}
 
-          </div>
+          {/* STEP 5: REVIEW */}
+          {step === 5 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <CheckCircle2 className="text-blue-500" /> Review & Submit
+              </h2>
+
+              <div className="bg-gray-50 rounded-lg p-6 space-y-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 border-b border-gray-200 pb-4">
+                  <div>
+                    <span className="block text-slate-500">Batch Name</span>
+                    <span className="font-semibold">{formData.batch_name}</span>
+                  </div>
+                  <div>
+                    <span className="block text-slate-500">Supplier</span>
+                    <span className="font-semibold">{formData.supplier}</span>
+                  </div>
+                  <div>
+                    <span className="block text-slate-500">Breed</span>
+                    <span className="font-semibold">{formData.breed}</span>
+                  </div>
+                  <div>
+                    <span className="block text-slate-500">Total Birds</span>
+                    <span className="font-semibold">
+                      {formData.initial_quantity}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 border-b border-gray-200 pb-4">
+                  <div>
+                    <span className="block text-slate-500">Total Cost</span>
+                    <span className="font-semibold text-slate-900">
+                      KES {totalAcquisitionCost.toLocaleString()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-slate-500">Payment Status</span>
+                    <span
+                      className={`font-bold uppercase text-xs px-2 py-1 rounded-full inline-block mt-1 ${
+                        paymentStatus === "paid"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {paymentStatus}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-slate-500 mb-2">
+                    Coop Allocations
+                  </span>
+                  <ul className="space-y-2">
+                    {formData.coop_allocations.map((c, i) => (
+                      <li
+                        key={i}
+                        className="flex justify-between bg-white p-2 border rounded"
+                      >
+                        <span>{c.coop_id || "Unassigned"}</span>
+                        <span className="font-mono">
+                          {c.allocated_quantity} birds
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {unallocatedQuantity !== 0 && (
+                    <div className="mt-2 text-red-600 font-medium flex items-center gap-1">
+                      <CheckCircle2 size={16} /> Warning: {unallocatedQuantity}{" "}
+                      birds are unallocated.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
+        {/* FOOTER NAVIGATION */}
+        <div className="bg-gray-50 px-8 py-4 border-t border-gray-200 flex justify-between items-center">
+          <button
+            onClick={() => setStep((prev) => Math.max(1, prev - 1))}
+            disabled={step === 1}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg font-medium ${
+              step === 1
+                ? "text-gray-300 cursor-not-allowed"
+                : "text-slate-600 hover:bg-gray-200"
+            }`}
+          >
+            <ChevronLeft size={18} /> Back
+          </button>
+
+          {step < 5 ? (
+            <button
+              onClick={() => setStep((prev) => Math.min(5, prev + 1))}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium shadow-sm transition-all"
+            >
+              Next Step <ChevronRight size={18} />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={unallocatedQuantity !== 0}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-medium shadow-sm transition-all ${
+                unallocatedQuantity !== 0
+                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700 text-white"
+              }`}
+            >
+              <CheckCircle2 size={18} /> Confirm Registration
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
 
-export default VaccineTrackingPage;
+export default CreateBatchForm;
+
+
