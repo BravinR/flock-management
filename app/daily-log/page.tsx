@@ -358,7 +358,7 @@ const DailyOperationsLog: React.FC = () => {
                       onChange={handleFeedKgChange}
                       step="0.1"
                       min="0"
-                      placeholder="e.g., 100"
+                      placeholder="100"
                       className="w-full p-4 text-3xl font-bold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
                     />
                     <p className="text-xs text-slate-500 mt-2">

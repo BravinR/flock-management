@@ -27,10 +27,10 @@ interface FeedIntakeData {
   custom_feed_name: string;
   supplier: string;
   input_mode: FeedInputMode;
-  bags_received: number;
-  kg_received: number;
-  cost_per_bag: number;
-  cost_per_kg: number;
+  bags_received: number | string;
+  kg_received: number | string;
+  cost_per_bag: number | string;
+  cost_per_kg: number | string;
   total_cost: number;
   currency: string;
   batch_number: string;
@@ -54,10 +54,10 @@ const FeedIntakePage: React.FC = () => {
     custom_feed_name: '',
     supplier: 'Pembe Feeds',
     input_mode: 'bags',
-    bags_received: 0,
-    kg_received: 0,
-    cost_per_bag: 0,
-    cost_per_kg: 0,
+    bags_received: '',
+    kg_received: '',
+    cost_per_bag: '',
+    cost_per_kg: '',
     total_cost: 0,
     currency: 'KES',
     batch_number: '',
@@ -91,59 +91,103 @@ const FeedIntakePage: React.FC = () => {
   };
 
   const handleBagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const bags = parseFloat(e.target.value) || 0;
-    const kg = bags * KG_PER_BAG;
-    const costPerKg = bags > 0 ? formData.cost_per_bag / KG_PER_BAG : 0;
-    const totalCost = bags * formData.cost_per_bag;
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({
+        ...prev,
+        bags_received: '',
+        kg_received: '',
+        total_cost: 0
+      }));
+    } else {
+      const bags = parseFloat(value);
+      const kg = bags * KG_PER_BAG;
+      const costPerBag = Number(formData.cost_per_bag || 0);
+      const costPerKg = bags > 0 ? costPerBag / KG_PER_BAG : 0;
+      const totalCost = bags * costPerBag;
 
-    setFormData(prev => ({
-      ...prev,
-      bags_received: bags,
-      kg_received: kg,
-      cost_per_kg: costPerKg,
-      total_cost: totalCost
-    }));
+      setFormData(prev => ({
+        ...prev,
+        bags_received: bags,
+        kg_received: kg,
+        cost_per_kg: costPerKg,
+        total_cost: totalCost
+      }));
+    }
   };
 
   const handleKgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const kg = parseFloat(e.target.value) || 0;
-    const bags = kg / KG_PER_BAG;
-    const costPerBag = formData.cost_per_kg * KG_PER_BAG;
-    const totalCost = kg * formData.cost_per_kg;
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({
+        ...prev,
+        kg_received: '',
+        bags_received: '',
+        total_cost: 0
+      }));
+    } else {
+      const kg = parseFloat(value);
+      const bags = kg / KG_PER_BAG;
+      const costPerKg = Number(formData.cost_per_kg || 0);
+      const costPerBag = costPerKg * KG_PER_BAG;
+      const totalCost = kg * costPerKg;
 
-    setFormData(prev => ({
-      ...prev,
-      kg_received: kg,
-      bags_received: bags,
-      cost_per_bag: costPerBag,
-      total_cost: totalCost
-    }));
+      setFormData(prev => ({
+        ...prev,
+        kg_received: kg,
+        bags_received: bags,
+        cost_per_bag: costPerBag,
+        total_cost: totalCost
+      }));
+    }
   };
 
   const handleCostPerBagChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const costPerBag = parseFloat(e.target.value) || 0;
-    const costPerKg = costPerBag / KG_PER_BAG;
-    const totalCost = formData.bags_received * costPerBag;
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({
+        ...prev,
+        cost_per_bag: '',
+        cost_per_kg: '',
+        total_cost: 0
+      }));
+    } else {
+      const costPerBag = parseFloat(value);
+      const costPerKg = costPerBag / KG_PER_BAG;
+      const bagsReceived = Number(formData.bags_received || 0);
+      const totalCost = bagsReceived * costPerBag;
 
-    setFormData(prev => ({
-      ...prev,
-      cost_per_bag: costPerBag,
-      cost_per_kg: costPerKg,
-      total_cost: totalCost
-    }));
+      setFormData(prev => ({
+        ...prev,
+        cost_per_bag: costPerBag,
+        cost_per_kg: costPerKg,
+        total_cost: totalCost
+      }));
+    }
   };
 
   const handleCostPerKgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const costPerKg = parseFloat(e.target.value) || 0;
-    const costPerBag = costPerKg * KG_PER_BAG;
-    const totalCost = formData.kg_received * costPerKg;
+    const value = e.target.value;
+    if (value === '') {
+      setFormData(prev => ({
+        ...prev,
+        cost_per_kg: '',
+        cost_per_bag: '',
+        total_cost: 0
+      }));
+    } else {
+      const costPerKg = parseFloat(value);
+      const costPerBag = costPerKg * KG_PER_BAG;
+      const kgReceived = Number(formData.kg_received || 0);
+      const totalCost = kgReceived * costPerKg;
 
-    setFormData(prev => ({
-      ...prev,
-      cost_per_kg: costPerKg,
-      cost_per_bag: costPerBag,
-      total_cost: totalCost
-    }));
+      setFormData(prev => ({
+        ...prev,
+        cost_per_kg: costPerKg,
+        cost_per_bag: costPerBag,
+        total_cost: totalCost
+      }));
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -152,9 +196,11 @@ const FeedIntakePage: React.FC = () => {
   };
 
   const handleBagsIncrement = (delta: number) => {
-    const newBags = Math.max(0, formData.bags_received + delta);
+    const currentBags = Number(formData.bags_received || 0);
+    const newBags = Math.max(0, currentBags + delta);
     const kg = newBags * KG_PER_BAG;
-    const totalCost = newBags * formData.cost_per_bag;
+    const costPerBag = Number(formData.cost_per_bag || 0);
+    const totalCost = newBags * costPerBag;
 
     setFormData(prev => ({
       ...prev,
@@ -171,7 +217,7 @@ const FeedIntakePage: React.FC = () => {
       return;
     }
 
-    if (formData.kg_received === 0) {
+    if (Number(formData.kg_received || 0) === 0) {
       alert('Please enter the quantity received');
       return;
     }
@@ -208,10 +254,10 @@ const FeedIntakePage: React.FC = () => {
           custom_feed_name: '',
           supplier: 'Pembe Feeds',
           input_mode: 'bags',
-          bags_received: 0,
-          kg_received: 0,
-          cost_per_bag: 0,
-          cost_per_kg: 0,
+          bags_received: '',
+          kg_received: '',
+          cost_per_bag: '',
+          cost_per_kg: '',
           total_cost: 0,
           currency: 'KES',
           batch_number: '',
@@ -248,7 +294,7 @@ const FeedIntakePage: React.FC = () => {
             <div>
               <h3 className="text-lg font-semibold text-green-900">Feed Intake Recorded Successfully!</h3>
               <p className="text-sm text-green-700">
-                {formData.bags_received.toFixed(1)} bags ({formData.kg_received}kg) of {formData.feed_type === 'Other' ? formData.custom_feed_name : formData.feed_type} received
+                {Number(formData.bags_received || 0).toFixed(1)} bags ({formData.kg_received || 0}kg) of {formData.feed_type === 'Other' ? formData.custom_feed_name : formData.feed_type} received
               </p>
             </div>
           </div>
@@ -388,7 +434,7 @@ const FeedIntakePage: React.FC = () => {
                     <div className="flex items-center gap-4 mb-4">
                       <button
                         onClick={() => handleBagsIncrement(-1)}
-                        disabled={formData.bags_received === 0}
+                        disabled={Number(formData.bags_received || 0) === 0}
                         className="w-12 h-12 flex items-center justify-center bg-red-100 hover:bg-red-200 disabled:bg-gray-100 disabled:cursor-not-allowed text-red-600 disabled:text-gray-400 rounded-lg border-2 border-red-300 disabled:border-gray-200 transition-all"
                       >
                         <Minus size={20} />
@@ -415,10 +461,10 @@ const FeedIntakePage: React.FC = () => {
                     <p className="text-xs text-slate-500 mb-3">
                       Assuming {KG_PER_BAG}kg per bag
                     </p>
-                    {formData.bags_received > 0 && (
+                    {Number(formData.bags_received || 0) > 0 && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                         <p className="text-sm text-blue-800">
-                          <span className="font-semibold">{formData.bags_received} bags</span> = <span className="font-bold text-lg">{formData.kg_received}kg</span>
+                          <span className="font-semibold">{formData.bags_received || 0} bags</span> = <span className="font-bold text-lg">{formData.kg_received || 0}kg</span>
                         </p>
                       </div>
                     )}
@@ -438,10 +484,10 @@ const FeedIntakePage: React.FC = () => {
                     <p className="text-xs text-slate-500 mt-3">
                       Total weight of feed received
                     </p>
-                    {formData.kg_received > 0 && (
+                    {Number(formData.kg_received || 0) > 0 && (
                       <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
                         <p className="text-sm text-blue-800">
-                          <span className="font-semibold">{formData.kg_received}kg</span> ≈ <span className="font-bold text-lg">{formData.bags_received.toFixed(1)} bags</span>
+                          <span className="font-semibold">{formData.kg_received || 0}kg</span> ≈ <span className="font-bold text-lg">{Number(formData.bags_received || 0).toFixed(1)} bags</span>
                         </p>
                       </div>
                     )}
@@ -620,8 +666,8 @@ const FeedIntakePage: React.FC = () => {
             </div>
             <div>
               <p className="text-xs text-slate-600">Quantity</p>
-              <p className="text-2xl font-bold text-slate-900">{formData.bags_received.toFixed(1)} bags</p>
-              <p className="text-sm text-slate-600">{formData.kg_received}kg</p>
+              <p className="text-2xl font-bold text-slate-900">{Number(formData.bags_received || 0).toFixed(1)} bags</p>
+              <p className="text-sm text-slate-600">{formData.kg_received || 0}kg</p>
             </div>
           </div>
         </div>
@@ -645,7 +691,7 @@ const FeedIntakePage: React.FC = () => {
             </div>
             <div>
               <p className="text-xs text-slate-600">Cost Per Kg</p>
-              <p className="text-2xl font-bold text-slate-900">{formData.currency} {formData.cost_per_kg.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-slate-900">{formData.currency} {Number(formData.cost_per_kg || 0).toFixed(2)}</p>
             </div>
           </div>
         </div>
