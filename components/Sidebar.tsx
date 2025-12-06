@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home,
+  LayoutDashboard,
   ClipboardList,
   Syringe,
   ShoppingBag,
@@ -26,8 +27,14 @@ interface NavItem {
 
 const navigationItems: NavItem[] = [
   {
-    name: 'Batch Registration',
+    name: 'Dashboards',
     href: '/',
+    icon: LayoutDashboard,
+    description: 'View Summary of Batches'
+  },
+  {
+    name: 'Batch Registration',
+    href: '/batch-intake',
     icon: Home,
     description: 'Register new flocks'
   },
